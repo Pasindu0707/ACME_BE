@@ -101,3 +101,23 @@ export const updateRecord = async (req, res) => {
     res.status(400).json({ message: error.message });
   }
 };
+// Delete a record from a specific company
+export const deleteRecord = async (req, res) => {
+  try {
+    const { companyId, recordId } = req.params;
+
+    const updatedCompany = await Company.findByIdAndUpdate(
+      companyId,
+      { $pull: { records: { _id: recordId } } },
+      { new: true } // return updated document
+    );
+
+    if (!updatedCompany) {
+      return res.status(404).json({ message: 'Company not found or record not found' });
+    }
+
+    res.status(200).json({ message: 'Record deleted successfully', company: updatedCompany });
+  } catch (error) {
+    res.status(400).json({ message: error.message });
+  }
+};

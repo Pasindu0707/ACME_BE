@@ -20,6 +20,10 @@ const recordSchema = new mongoose.Schema({
     advance: {
         type: String,
         required: true
+    },
+    chequeNumber: {
+        type: String,
+        required: false
     }
 });
 
