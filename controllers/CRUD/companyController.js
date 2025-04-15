@@ -161,7 +161,7 @@ export const generateSummaryReport = async (req, res) => {
 
     // Table Header
     doc.fontSize(13).fillColor('#000000').text('Company', 60, doc.y, { width: 300 });
-    doc.text('Total Advance', 360, doc.y, { width: 200, align: 'right' });
+    doc.text('Total Payments', 360, doc.y, { width: 200, align: 'right' });
     doc.moveDown(0.5);
     doc.moveTo(50, doc.y).lineTo(550, doc.y).stroke();
 
@@ -274,7 +274,7 @@ export const generateCompanyDetailReport = async (req, res) => {
     let infoY = doc.y + 10;
     doc.text(`Company Name: ${company.name}`, 60, infoY);
     doc.text(`Total Records: ${company.records.length}`, 60, infoY + 18);
-    doc.text(`Total Advance: Rs. ${totalAdvance.toFixed(2)}`, 60, infoY + 36);
+    doc.text(`Total Payments: Rs. ${totalAdvance.toFixed(2)}`, 60, infoY + 36);
 
     // Records Section
     doc.y = doc.y + infoBoxHeight + 20;
@@ -282,7 +282,7 @@ export const generateCompanyDetailReport = async (req, res) => {
     doc.moveDown(0.5);
 
     // Table Header
-const headers = ['Date', 'Invoice No', 'Container No', 'Product', 'Payments', 'Cheque No'];
+const headers = ['Date', 'Invoice No', 'Container No', 'Description', 'Payments', 'Cheque No'];
     const colWidths = [80, 80, 80, 100, 80, 80]; // total: 500
     const rowHeight = 24;
     const pageHeightLimit = doc.page.height - 100;
