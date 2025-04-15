@@ -23,11 +23,12 @@
     "express": "^4.21.1",
     "express-async-handler": "^1.2.0",
     "fluentreports": "^1.4.3",
+    "fs": "^0.0.1-security",
     "jsonwebtoken": "^9.0.2",
     "mongodb": "^6.9.0",
     "mongoose": "^8.5.0",
     "pdf-lib": "^1.17.1",
-    "pdfkit": "^0.15.0",
+    "pdfkit": "^0.15.2",
     "uuid": "^10.0.0"
   },
   "devDependencies": {

@@ -1,5 +1,5 @@
 import express from 'express';
-import {addCompany,deleteCompany,addRecord,deleteRecord,updateCompany,getAllCompanyNames,getCompanyById,updateRecord} from '../../controllers/CRUD/companyController.js'; // Use .js extension
+import {addCompany,deleteCompany,generateSummaryReport,generateCompanyDetailReport,addRecord,deleteRecord,updateCompany,getAllCompanyNames,getCompanyById,updateRecord} from '../../controllers/CRUD/companyController.js'; // Use .js extension
 
 const router = express.Router();
 
@@ -27,5 +27,7 @@ router.put('/:companyId/records/:recordId', updateRecord);
 // Delete a record from a company
 router.delete('/:companyId/records/:recordId', deleteRecord);
 
+router.get('/reports/summary', generateSummaryReport);
+router.get('/reports/details/:companyId', generateCompanyDetailReport);
 
 export default router;
