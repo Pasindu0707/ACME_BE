@@ -225,72 +225,66 @@ export const deleteRecord = async (req, res) => {
 // };
 export const generateSummaryReport = async (req, res) => {
   try {
+    const { fromDate, toDate } = req.query;
+    const from = fromDate ? new Date(fromDate) : null;
+    const to = toDate ? new Date(toDate) : null;
+
+    if (from && to && from > to) {
+      return res.status(400).json({ message: "'fromDate' must be before or equal to 'toDate'" });
+    }
+
     const companies = await Company.find();
 
-    const doc = new PDFDocument({
-      size: 'A4',
-      margin: 50,
-      bufferPages: true,
-    });
+    const doc = new PDFDocument({ size: 'A4', margin: 50, bufferPages: true });
 
     res.setHeader('Content-Disposition', 'attachment; filename=all_companies_detailed.pdf');
     res.setHeader('Content-Type', 'application/pdf');
     doc.pipe(res);
 
-    // === HEADER ===
     doc.rect(0, 0, doc.page.width, 100).fill('#2c3e50');
     doc.fontSize(24).fillColor('white').text('All Companies Detailed Payment Report', { align: 'center', y: 35 });
     doc.fontSize(12).text(`Generated on: ${new Date().toLocaleDateString()}`, { align: 'center', y: 75 });
-
     doc.y = 120;
 
-    const rowHeight = 22; // Reduced row height
-    const pageHeightLimit = doc.page.height - 80; // Adjusted page limit
+    const rowHeight = 22;
+    const pageHeightLimit = doc.page.height - 80;
     let y = doc.y;
-
     let grandTotal = 0;
 
     for (const company of companies) {
-      const companyTotal = company.records.reduce((sum, r) => sum + parseFloat(r.advance || 0), 0);
+      const filteredRecords = company.records.filter((record) => {
+        const recordDate = new Date(record.date);
+        return (!from || recordDate >= from) && (!to || recordDate <= to);
+      });
+
+      if (filteredRecords.length === 0) continue;
+
+      const companyTotal = filteredRecords.reduce((sum, r) => sum + parseFloat(r.advance || 0), 0);
       grandTotal += companyTotal;
 
-      // === Company Title ===
-      if (y + rowHeight * 2 > pageHeightLimit) { // Adjusted page break check
-        doc.addPage();
-        y = doc.y;
+      if (y + rowHeight * 2 > pageHeightLimit) {
+        doc.addPage(); y = doc.y;
       }
 
-      doc.fontSize(16).fillColor('#2c3e50').text(company.name, 50, y, { 
-        width: 480,
-        underline: true 
-      });
-      y = doc.y + 8; // Reduced spacing after company name
+      doc.fontSize(16).fillColor('#2c3e50').text(company.name, 50, y, { width: 480, underline: true });
+      y = doc.y + 8;
 
-      // === Table Header ===
       const headers = ['Date', 'Amount', 'Cheque Number'];
       const colWidths = [180, 150, 150];
       let x = 50;
 
       doc.fontSize(12).fillColor('#000');
       headers.forEach((header, i) => {
-        doc.text(header, x + 5, y, { 
-          width: colWidths[i] - 10, 
-          align: i === 1 ? 'right' : 'left'
-        });
+        doc.text(header, x + 5, y, { width: colWidths[i] - 10, align: i === 1 ? 'right' : 'left' });
         x += colWidths[i];
       });
-      
-      // Header underline
-      doc.moveTo(50, y + rowHeight - 12)
-         .lineTo(530, y + rowHeight - 12)
-         .stroke();
+
+      doc.moveTo(50, y + rowHeight - 12).lineTo(530, y + rowHeight - 12).stroke();
       y += rowHeight;
 
-      // === Records ===
-      company.records.forEach((record, index) => {
+      filteredRecords.forEach((record, index) => {
         if (y + rowHeight > pageHeightLimit) {
-          doc.addPage();
-          y = doc.y;
+          doc.addPage(); y = doc.y;
         }
 
         if (index % 2 === 0) {
@@ -300,78 +294,39 @@ export const generateSummaryReport = async (req, res) => {
         x = 50;
         const values = [
           new Date(record.date).toLocaleDateString(),
-          `Rs. ${(parseFloat(record.advance) || 0).toLocaleString('en-LK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+          `Rs. ${(parseFloat(record.advance) || 0).toLocaleString('en-LK', { minimumFractionDigits: 2 })}`,
           record.chequeNumber || 'N/A'
         ];
 
         doc.fontSize(10).fillColor('#2c3e50');
         values.forEach((val, i) => {
           const align = i === 1 ? 'right' : 'left';
-          doc.text(val, x + 5, y, { 
-            width: colWidths[i] - 10, 
-            align,
-            lineGap: 1 // Reduced line gap
-          });
+          doc.text(val, x + 5, y, { width: colWidths[i] - 10, align, lineGap: 1 });
           x += colWidths[i];
         });
 
         y += rowHeight;
       });
 
-      // === Company total ===
       if (y + rowHeight > pageHeightLimit) {
-        doc.addPage();
-        y = doc.y;
+        doc.addPage(); y = doc.y;
       }
 
       doc.rect(50, y - 2, 480, rowHeight).fill('#e8f0fe');
       doc.fontSize(12).fillColor('#2c3e50');
-      doc.text(`Total for ${company.name}:`, 50, y, { 
-        width: 330, 
-        align: 'right' 
-      });
-      doc.text(
-        `Rs. ${companyTotal.toLocaleString('en-LK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 
-        380, 
-        y, 
-        { width: 150, align: 'right' }
-      );
+      doc.text(`Total for ${company.name}:`, 50, y, { width: 330, align: 'right' });
+      doc.text(`Rs. ${companyTotal.toLocaleString('en-LK', { minimumFractionDigits: 2 })}`, 380, y, { width: 150, align: 'right' });
 
-      y += rowHeight + 12; // Reduced spacing after company total
+      y += rowHeight + 12;
     }
 
-    // === Grand Total ===
     if (y + rowHeight > pageHeightLimit) {
-      doc.addPage();
-      y = doc.y;
+      doc.addPage(); y = doc.y;
     }
 
-    doc.moveDown(1); // Reduced spacing before grand total
     doc.fontSize(14).fillColor('#000');
-    doc.text('Grand Total:', 50, y, { 
-      width: 330, 
-      align: 'right' 
-    });
-    doc.text(
-      `Rs. ${grandTotal.toLocaleString('en-LK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 
-      380, 
-      y, 
-      { width: 150, align: 'right' }
-    );
-
-    // === Footer ===
-    // const pageCount = doc.bufferedPageRange().count;
-    // for (let i = 0; i < pageCount; i++) {
-    //   doc.switchToPage(i);
-    //   doc.fontSize(10)
-    //      .fillColor('#7f8c8d')
-    //      .text(
-    //        `Page ${i + 1} of ${pageCount}`, 
-    //        0, 
-    //        doc.page.height - 50, 
-    //        { align: 'center' }
-    //      );
-    // }
+    doc.text('Grand Total:', 50, y, { width: 330, align: 'right' });
+    doc.text(`Rs. ${grandTotal.toLocaleString('en-LK', { minimumFractionDigits: 2 })}`, 380, y, { width: 150, align: 'right' });
 
     doc.end();
   } catch (error) {
@@ -381,65 +336,59 @@ export const generateSummaryReport = async (req, res) => {
 
 
 
+
 // Detailed PDF: Individual Company with all records
 export const generateCompanyDetailReport = async (req, res) => {
   try {
     const { companyId } = req.params;
-    const company = await Company.findById(companyId);
+    const { fromDate, toDate } = req.query;
+    const from = fromDate ? new Date(fromDate) : null;
+    const to = toDate ? new Date(toDate) : null;
 
-    if (!company) {
-      return res.status(404).json({ message: 'Company not found' });
+    if (from && to && from > to) {
+      return res.status(400).json({ message: "'fromDate' must be before or equal to 'toDate'" });
     }
 
-    const doc = new PDFDocument({
-      size: 'A4',
-      margin: 50,
-      bufferPages: true
+    const company = await Company.findById(companyId);
+    if (!company) return res.status(404).json({ message: 'Company not found' });
+
+    const filteredRecords = company.records.filter((record) => {
+      const date = new Date(record.date);
+      return (!from || date >= from) && (!to || date <= to);
     });
+
+    const totalAdvance = filteredRecords.reduce((sum, r) => sum + parseFloat(r.advance || 0), 0);
+
+    const doc = new PDFDocument({ size: 'A4', margin: 50, bufferPages: true });
 
     res.setHeader('Content-Disposition', `attachment; filename=company_${companyId}_details.pdf`);
     res.setHeader('Content-Type', 'application/pdf');
     doc.pipe(res);
 
-    // Header
     doc.rect(0, 0, doc.page.width, 100).fill('#2c3e50');
-    doc.fontSize(24).fillColor('white').text('Company Details Report', {
-      align: 'center',
-      y: 35
-    });
-    doc.fontSize(12).text(`Generated on: ${new Date().toLocaleDateString()}`, {
-      align: 'center',
-      y: 75
-    });
+    doc.fontSize(24).fillColor('white').text('Company Details Report', { align: 'center', y: 35 });
+    doc.fontSize(12).text(`Generated on: ${new Date().toLocaleDateString()}`, { align: 'center', y: 75 });
 
     doc.y = 120;
 
-    // Company Info
     doc.fontSize(16).fillColor('#2c3e50').text('Company Information', { underline: true });
     doc.moveDown(0.5);
 
-    // Boxed Info Area
     const infoBoxHeight = 60;
     doc.rect(50, doc.y, doc.page.width - 100, infoBoxHeight).fill('#f8f9fa');
 
-    const totalAdvance = company.records.reduce(
-      (sum, r) => sum + parseFloat(r.advance || 0), 0
-    );
-
     doc.fillColor('#2c3e50').fontSize(12);
-    let infoY = doc.y + 10;
+    const infoY = doc.y + 10;
     doc.text(`Company Name: ${company.name}`, 60, infoY);
-    doc.text(`Total Records: ${company.records.length}`, 60, infoY + 18);
-    doc.text(`Total Payments: Rs. ${totalAdvance.toLocaleString('en-LK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 60, infoY + 36);
+    doc.text(`Total Records: ${filteredRecords.length}`, 60, infoY + 18);
+    doc.text(`Total Payments: Rs. ${totalAdvance.toLocaleString('en-LK', { minimumFractionDigits: 2 })}`, 60, infoY + 36);
 
-    // Records Section
     doc.y = doc.y + infoBoxHeight + 20;
     doc.fontSize(16).fillColor('#2c3e50').text('Payment Records', { underline: true });
     doc.moveDown(0.5);
 
-    // Table Header
     const headers = ['Date', 'Invoice No', 'Container No', 'Description', 'Payments', 'Cheque No'];
-    const colWidths = [80, 80, 80, 100, 80, 80]; // total: 500
+    const colWidths = [80, 80, 80, 100, 80, 80];
     const rowHeight = 24;
     const pageHeightLimit = doc.page.height - 100;
     let x = 50;
@@ -453,17 +402,12 @@ export const generateCompanyDetailReport = async (req, res) => {
     doc.moveTo(50, y + rowHeight - 12).lineTo(550, y + rowHeight - 12).stroke();
     y += rowHeight;
 
-    // Table Rows
-    company.records.forEach((record, index) => {
+    filteredRecords.forEach((record, index) => {
       if (y + rowHeight > pageHeightLimit) {
-        doc.addPage();
-        y = doc.y;
+        doc.addPage(); y = doc.y;
       }
 
-      // Alternate background color
-      if (index % 2 === 0) {
-        doc.rect(50, y - 2, 500, rowHeight).fill('#f0f0f0');
-      }
+      if (index % 2 === 0) doc.rect(50, y - 2, 500, rowHeight).fill('#f0f0f0');
 
       x = 50;
       const values = [
@@ -471,7 +415,7 @@ export const generateCompanyDetailReport = async (req, res) => {
         record.invoiceNo || '-',
         record.containerNo || '-',
         record.product || '-',
-        `Rs. ${(parseFloat(record.advance) || 0).toLocaleString('en-LK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        `Rs. ${(parseFloat(record.advance) || 0).toLocaleString('en-LK', { minimumFractionDigits: 2 })}`,
         record.chequeNumber || 'N/A'
       ];
 
@@ -484,36 +428,20 @@ export const generateCompanyDetailReport = async (req, res) => {
       y += rowHeight;
     });
 
-    // === Grand Total Row at the Bottom ===
     if (y + rowHeight > pageHeightLimit) {
-      doc.addPage();
-      y = doc.y;
+      doc.addPage(); y = doc.y;
     }
 
     doc.rect(50, y - 2, 500, rowHeight).fill('#e8f0fe');
-
     doc.fontSize(12).fillColor('#2c3e50');
-    doc.text('Grand Total:', 50, y, {
-      width: 420,
-      align: 'right'
-    });
-    doc.text(`Rs. ${totalAdvance.toLocaleString('en-LK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-      , 470, y, {
-      width: 80,
-      align: 'left'
-    });
+    doc.text('Grand Total:', 50, y, { width: 420, align: 'right' });
+    doc.text(`Rs. ${totalAdvance.toLocaleString('en-LK', { minimumFractionDigits: 2 })}`, 470, y, { width: 80, align: 'left' });
 
-    y += rowHeight;
-
-    // === Footer on All Pages ===
     const pageCount = doc.bufferedPageRange().count;
     for (let i = 0; i < pageCount; i++) {
       doc.switchToPage(i);
-      doc.fontSize(10)
-        .fillColor('#7f8c8d')
-        .text(`Page ${i + 1} of ${pageCount}`, 0, doc.page.height - 50, {
-          align: 'center'
-        });
+      doc.fontSize(10).fillColor('#7f8c8d')
+        .text(`Page ${i + 1} of ${pageCount}`, 0, doc.page.height - 50, { align: 'center' });
     }
 
     doc.end();
