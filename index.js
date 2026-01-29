@@ -11,6 +11,19 @@ import verifyJWT from './middleware/verifyJWT.js';
 import cookieParser from 'cookie-parser';
 import credentials from './middleware/credentials.js';
 
+// Load environment variables
+dotenv.config();
+
+// Validate required environment variables
+const requiredEnvVars = ['DATABASE_URI', 'ACCESS_TOKEN_SECRET', 'REFRESH_TOKEN_SECRET'];
+const missingEnvVars = requiredEnvVars.filter(envVar => !process.env[envVar]);
+
+if (missingEnvVars.length > 0) {
+    console.error('Missing required environment variables:', missingEnvVars.join(', '));
+    console.error('Please ensure all required environment variables are set in your .env file or deployment environment.');
+    process.exit(1);
+}
+
 // Get the current file name and directory name
 const __dirname = path.resolve()
 
