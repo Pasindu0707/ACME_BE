@@ -4,14 +4,20 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 import cors from 'cors';
+import cookieParser from 'cookie-parser';
+import mongoose from 'mongoose';
+
+// Import configurations
 import corsOptions from './config/corsOptions.js';
 import connectDB from './config/dbConn.js';
-import mongoose from 'mongoose';
+
+// Import middleware
 import { logger } from './middleware/logger.js';
 import errorHandler from './middleware/errorHandler.js';
 import verifyJWT from './middleware/verifyJWT.js';
-import cookieParser from 'cookie-parser';
 import credentials from './middleware/credentials.js';
+
+// Import routes
 import subdirRoutes from './Routes/subdir.js';
 import adminRegisterRoutes from './Routes/adminRegister.js';
 import authRoutes from './Routes/auth.js';
@@ -26,69 +32,64 @@ import dashBoardCompanyRoutes from './Routes/API/dashCompany.js';
 // Load environment variables
 dotenv.config();
 
-// Validate required environment variables
-const requiredEnvVars = ['DATABASE_URI', 'ACCESS_TOKEN_SECRET', 'REFRESH_TOKEN_SECRET'];
-const missingEnvVars = requiredEnvVars.filter(envVar => !process.env[envVar]);
-
-if (missingEnvVars.length > 0) {
-    console.error('Missing required environment variables:', missingEnvVars.join(', '));
-    console.error('Please ensure all required environment variables are set in your .env file or deployment environment.');
-    if (!process.env.VERCEL) {
-        process.exit(1);
-    }
-    // In Vercel, we'll let it fail on first request with a better error message
-}
-
-// Get the current file name and directory name (works in both CommonJS and ES modules)
+// Get directory paths (ES module compatible)
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+// Create Express app
 const app = express();
 
-// Only serve static files if the directory exists (for local development)
-if (!process.env.VERCEL) {
-    app.use(express.static(path.join(__dirname, '/client/dist')));
-}
+// ============================================
+// MIDDLEWARE SETUP
+// ============================================
 
-const PORT = process.env.PORT || 3500;
+// Trust proxy (important for Vercel)
+app.set('trust proxy', 1);
 
-// CORS must be set early so errors can include CORS headers
-// Handle options credentials check-before cors
+// CORS - Must be first to handle preflight and errors
 app.use(credentials);
-
-// CORS - Set before database connection so errors have CORS headers
 app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
 
-// Custom middleware
+// Body parsers
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: false, limit: '10mb' }));
+app.use(cookieParser());
+
+// Logging middleware
 app.use(logger);
 
-// Middleware to ensure database connection (for serverless)
+// Database connection middleware (for serverless)
 app.use(async (req, res, next) => {
   try {
+    // Check if already connected
     if (mongoose.connection.readyState === 0) {
+      // Not connected, try to connect
+      await connectDB();
+    } else if (mongoose.connection.readyState === 3) {
+      // Connection was lost, try to reconnect
       await connectDB();
     }
     next();
   } catch (error) {
-    console.error('Database connection error in middleware:', error);
+    console.error('Database connection error:', error.message);
+    // Pass error to error handler (CORS headers already set)
     next(error);
   }
-}); 
+});
 
-// Adding middleware
-app.use(express.urlencoded({ extended: false })); // to get form data to res body
-app.use(express.json()); // to get json data
-app.use(cookieParser());
+// ============================================
+// ROUTES
+// ============================================
 
-// Public routes
+// Public routes (no authentication required)
 app.use('/', subdirRoutes);
 app.use('/register', adminRegisterRoutes);
-app.use('/auth', authRoutes); // login
-app.use('/refresh', refreshRoutes); // Refresh
-app.use('/logout', logoutRoutes); // logout
+app.use('/auth', authRoutes);
+app.use('/refresh', refreshRoutes);
+app.use('/logout', logoutRoutes);
 
-// Protected routes
+// Protected routes (require JWT authentication)
 app.use(verifyJWT);
 app.use('/inventory', inventoryRoutes);
 app.use('/reports', pdfGenRoutes);
@@ -96,23 +97,23 @@ app.use('/companies', companyRoutes);
 app.use('/company', dashBoardCompanyRoutes);
 app.use('/users', userRoutes);
 
-// 404 handler - only for non-API routes
-app.get('*', (req, res) => {
-  // Skip 404 for API routes
-  if (req.path.startsWith('/auth') || 
-      req.path.startsWith('/register') || 
-      req.path.startsWith('/refresh') || 
-      req.path.startsWith('/logout') ||
-      req.path.startsWith('/inventory') ||
-      req.path.startsWith('/reports') ||
-      req.path.startsWith('/companies') ||
-      req.path.startsWith('/company') ||
-      req.path.startsWith('/users')) {
-    return res.status(404).json({ message: 'Route not found' });
-  }
-  
-  // For other routes, try to send index.html (only if not in Vercel)
-  if (!process.env.VERCEL) {
+// 404 handler for undefined routes
+app.all('*', (req, res) => {
+  // Check if it's an API route
+  const isApiRoute = req.path.startsWith('/auth') ||
+    req.path.startsWith('/register') ||
+    req.path.startsWith('/refresh') ||
+    req.path.startsWith('/logout') ||
+    req.path.startsWith('/inventory') ||
+    req.path.startsWith('/reports') ||
+    req.path.startsWith('/companies') ||
+    req.path.startsWith('/company') ||
+    req.path.startsWith('/users');
+
+  if (isApiRoute) {
+    res.status(404).json({ message: 'Route not found' });
+  } else if (!process.env.VERCEL) {
+    // Only serve static files in local development
     try {
       res.sendFile(path.join(__dirname, 'views', 'index.html'));
     } catch (error) {
@@ -123,21 +124,33 @@ app.get('*', (req, res) => {
   }
 });
 
+// Error handler (must be last)
 app.use(errorHandler);
 
-// Initialize database connection for local development
-if (!process.env.VERCEL) {
-  connectDB().catch(err => {
-    console.error('Failed to connect to database:', err);
-    process.exit(1);
-  });
+// ============================================
+// LOCAL DEVELOPMENT SERVER
+// ============================================
 
-  // For local development, start the server
-  mongoose.connection.once('open', () => {
-    console.log("Connected to MongoDB");
-    app.listen(PORT, () => console.log(`Running on port ${PORT}`));
-  });
+if (!process.env.VERCEL) {
+  const PORT = process.env.PORT || 3500;
+
+  // Initialize database connection
+  connectDB()
+    .then(() => {
+      console.log('✅ Connected to MongoDB');
+      app.listen(PORT, () => {
+        console.log(`🚀 Server running on port ${PORT}`);
+        console.log(`📍 Environment: ${process.env.NODE_ENV || 'development'}`);
+      });
+    })
+    .catch((err) => {
+      console.error('❌ Failed to connect to database:', err.message);
+      process.exit(1);
+    });
 }
 
-// Export the app for Vercel serverless functions
-export default app; 
+// ============================================
+// VERCEL SERVERLESS FUNCTION EXPORT
+// ============================================
+
+export default app;
