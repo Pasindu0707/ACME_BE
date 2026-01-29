@@ -52,6 +52,17 @@ if (!process.env.VERCEL) {
 
 const PORT = process.env.PORT || 3500;
 
+// CORS must be set early so errors can include CORS headers
+// Handle options credentials check-before cors
+app.use(credentials);
+
+// CORS - Set before database connection so errors have CORS headers
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
+
+// Custom middleware
+app.use(logger);
+
 // Middleware to ensure database connection (for serverless)
 app.use(async (req, res, next) => {
   try {
@@ -63,17 +74,7 @@ app.use(async (req, res, next) => {
     console.error('Database connection error in middleware:', error);
     next(error);
   }
-});
-
-// Custom middleware
-app.use(logger);
-
-// Handle options credentials check-before cors
-app.use(credentials);
-
-// CORS
-app.use(cors(corsOptions));
-app.options('*', cors(corsOptions)); 
+}); 
 
 // Adding middleware
 app.use(express.urlencoded({ extended: false })); // to get form data to res body
