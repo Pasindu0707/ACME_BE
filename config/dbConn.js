@@ -18,6 +18,20 @@ const connectDB = async () => {
             process.exit(1);
         }
 
+        // Validate connection string format
+        const uri = process.env.DATABASE_URI;
+        if (uri.includes('acme.whbausv.mongodb.net')) {
+            const error = new Error('Invalid MongoDB hostname detected. Please update DATABASE_URI in Vercel environment variables with the correct connection string from MongoDB Atlas.');
+            error.code = 'INVALID_HOSTNAME';
+            throw error;
+        }
+        
+        if (!uri.includes('mongodb+srv://') && !uri.includes('mongodb://')) {
+            const error = new Error('Invalid DATABASE_URI format. Must start with mongodb+srv:// or mongodb://');
+            error.code = 'INVALID_FORMAT';
+            throw error;
+        }
+
         // If already connected, return the existing connection
         if (cached.conn) {
             return cached.conn;
