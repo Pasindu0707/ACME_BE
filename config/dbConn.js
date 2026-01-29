@@ -59,12 +59,24 @@ const connectDB = async () => {
             console.error('  4. Ensure your IP is whitelisted (or use 0.0.0.0/0 for all IPs)');
             console.error('\nConnection string format should be:');
             console.error('  mongodb+srv://username:password@cluster.mongodb.net/database-name?retryWrites=true&w=majority');
-        } else if (err.message.includes('ENOTFOUND') || err.message.includes('getaddrinfo')) {
+        } else if (err.message.includes('ENOTFOUND') || err.message.includes('getaddrinfo') || err.message.includes('querySrv')) {
             console.error('\n⚠️  Cannot reach MongoDB server!');
             console.error('This usually means:');
             console.error('  1. Incorrect cluster hostname in connection string');
             console.error('  2. Network connectivity issues');
             console.error('  3. MongoDB Atlas cluster is paused');
+            console.error('\nThe connection string hostname appears to be incorrect.');
+            // Show a masked version of the connection string for debugging
+            if (process.env.DATABASE_URI) {
+                const uri = process.env.DATABASE_URI;
+                const maskedUri = uri.replace(/mongodb\+srv:\/\/([^:]+):([^@]+)@([^\/]+)/, 'mongodb+srv://$1:***@$3');
+                console.error('Current DATABASE_URI format:', maskedUri);
+                console.error('\nExpected format: mongodb+srv://username:password@cluster0.xxxxx.mongodb.net/database-name');
+                console.error('Common issues:');
+                console.error('  - Hostname should be like: cluster0.vcqkraa.mongodb.net');
+                console.error('  - NOT like: acme.whbausv.mongodb.net (this looks incorrect)');
+                console.error('  - Make sure you copied the connection string from MongoDB Atlas');
+            }
         } else {
             console.error('\n⚠️  Unexpected database connection error');
             console.error('Please check your DATABASE_URI and MongoDB configuration');
