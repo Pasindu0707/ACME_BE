@@ -21,7 +21,10 @@ const missingEnvVars = requiredEnvVars.filter(envVar => !process.env[envVar]);
 if (missingEnvVars.length > 0) {
     console.error('Missing required environment variables:', missingEnvVars.join(', '));
     console.error('Please ensure all required environment variables are set in your .env file or deployment environment.');
-    process.exit(1);
+    if (!process.env.VERCEL) {
+        process.exit(1);
+    }
+    // In Vercel, we'll let it fail on first request with a better error message
 }
 
 // Get the current file name and directory name
@@ -32,8 +35,18 @@ app.use(express.static(path.join(__dirname,'/client/dist')))
 
 const PORT = process.env.PORT || 3500;
 
-// Database connection
-connectDB();
+// Middleware to ensure database connection (for serverless)
+app.use(async (req, res, next) => {
+  try {
+    if (mongoose.connection.readyState === 0) {
+      await connectDB();
+    }
+    next();
+  } catch (error) {
+    console.error('Database connection error in middleware:', error);
+    next(error);
+  }
+});
 
 // Custom middleware
 app.use(logger);
@@ -84,7 +97,19 @@ app.get('*', (req, res) => {
 
 app.use(errorHandler);
 
-mongoose.connection.once('open', () => {
-  console.log("Connected to MongoDB");
-  app.listen(PORT, () => console.log(`Running on port ${PORT}`));
-}); 
+// Initialize database connection for local development
+if (!process.env.VERCEL) {
+  connectDB().catch(err => {
+    console.error('Failed to connect to database:', err);
+    process.exit(1);
+  });
+
+  // For local development, start the server
+  mongoose.connection.once('open', () => {
+    console.log("Connected to MongoDB");
+    app.listen(PORT, () => console.log(`Running on port ${PORT}`));
+  });
+}
+
+// Export the app for Vercel serverless functions
+export default app; 

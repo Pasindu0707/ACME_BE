@@ -1,21 +1,46 @@
 import mongoose from 'mongoose';
 
+// Cache the connection to reuse in serverless environments
+let cached = global.mongoose;
+
+if (!cached) {
+    cached = global.mongoose = { conn: null, promise: null };
+}
+
 const connectDB = async () => {
     try {
         if (!process.env.DATABASE_URI) {
             console.error('DATABASE_URI is not defined in environment variables');
+            if (process.env.VERCEL) {
+                // In Vercel, don't exit, just throw
+                throw new Error('DATABASE_URI is not defined');
+            }
             process.exit(1);
         }
-        
-        // Connection options for better error handling and reliability
-        const options = {
-            serverSelectionTimeoutMS: 5000, // Timeout after 5s instead of 30s
-            socketTimeoutMS: 45000, // Close sockets after 45s of inactivity
-        };
-        
-        await mongoose.connect(process.env.DATABASE_URI, options);
-        console.log('MongoDB connection initiated');
+
+        // If already connected, return the existing connection
+        if (cached.conn) {
+            return cached.conn;
+        }
+
+        // If connection is in progress, wait for it
+        if (!cached.promise) {
+            // Connection options for better error handling and reliability
+            const options = {
+                serverSelectionTimeoutMS: 5000, // Timeout after 5s instead of 30s
+                socketTimeoutMS: 45000, // Close sockets after 45s of inactivity
+            };
+            
+            cached.promise = mongoose.connect(process.env.DATABASE_URI, options).then((mongoose) => {
+                console.log('MongoDB connection initiated');
+                return mongoose;
+            });
+        }
+
+        cached.conn = await cached.promise;
+        return cached.conn;
     } catch (err) {
+        cached.promise = null; // Reset promise on error
         console.error('\n=== Database Connection Error ===');
         console.error('Error:', err.message);
         
@@ -46,6 +71,11 @@ const connectDB = async () => {
         }
         
         console.error('\n===================================\n');
+        
+        // In Vercel/serverless, throw instead of exiting
+        if (process.env.VERCEL) {
+            throw err;
+        }
         process.exit(1);
     }
 };
